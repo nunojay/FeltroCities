@@ -1,0 +1,659 @@
+#!/usr/local/bin/wish
+#
+# Feltro Cityscapes and L-systems generator
+# Copyright (c) N. João 2014 - 2020
+# https://github.com/nunojay/FeltroCities
+#
+# Use as you whish, changed or unchanged, just credit me (N. João, https://github.com/nunojay/FeltroCities).
+# I am not responsable in any imaginable way by someone else's use of this work or derivatives.
+#
+
+
+set idx 3
+set rrr  11
+
+proc rand {}  {
+    global rrr idx
+
+    set rl  {5 23 51 89 43 11 7 7}
+    set idx  [expr { ($idx + $rrr + 3) & 0x07 }]
+    set rrr  [expr { ($rrr * 109 + [lindex $rl $idx]) & 0xffff }]
+    expr { $rrr & 0xff }
+}
+
+
+proc Rand {n {ofst 0}}  {
+    expr { $n * [rand] / 255 + $ofst }
+}
+
+
+proc Sin {base len ang_deg}  {
+    expr { $base + round($len * sin($ang_deg * 3.1415 / 180.0)) }
+}
+
+
+proc Cos {base len ang_deg}  {
+    expr { $base + round($len * cos($ang_deg * 3.1415 / 180.0)) }
+}
+
+
+set X  0
+set Y  0
+set Pen  down
+
+
+proc PenUp {}  {
+    set ::Pen up
+}
+
+
+proc PenDown {}  {
+    set ::Pen down
+}
+
+
+proc Yc {args}  {
+    expr $::gWinDy - [uplevel [list eval expr $args ]]
+}
+
+
+proc PushPos {}  {
+    global pstack X Y
+    lappend pstack [list $X $Y]
+}
+
+
+proc PopPos {}  {
+    global pstack X Y
+    foreach {X Y} [lindex $pstack end] break
+    set pstack [lrange $pstack 0 end-1] 
+}
+
+
+proc _lineto {x y {color blue}}  {
+    if {$::Pen == "down"}  {
+        .c create line [expr {$::X+0}] [Yc $::Y] \
+                       [expr {$x+0}]   [Yc $y] -fill $color -width 1
+    }
+    set ::X  $x
+    set ::Y  $y
+}
+
+
+proc _line {x1 y1 x2 y2 {color blue}}  {
+    if {$::Pen == "down"}  {
+        .c create line [expr {$x1 + 300}] [expr {$y1+300}] \
+                       [expr {$x2+300}]   [expr {$y2+300}] -fill $color
+    }
+    set ::X  $x2
+    set ::Y  $y2
+}
+
+
+proc lineby {dx dy {color blue}}  {
+    set x  [expr $::X + $dx]
+    set y  [expr $::Y + $dy]
+    set cx  0 ;#300
+    set cy  0 ;#300
+    if {$::Pen == "down"}  {
+        .c create line [expr {$::X+$cx}] [Yc $::Y + $cy] \
+                       [expr {$x+$cx}]   [Yc $y + $cy] -fill $color
+    }
+    set ::X  $x
+    set ::Y  $y
+}
+
+# polar line
+proc pLineBy {len {angle 0} {color blue} {base 0}}  {
+    lineby [Cos $base $len $angle] [Sin $base $len $angle] $color
+}
+
+
+proc SetPos {x y}  {
+    set ::X  $x
+    set ::Y  $y
+}
+
+
+proc walk {}  {
+    foreach {x y} [list [Rand 25] [Rand 25]] break
+    SetPos $x $y
+    for {set i 0} {$i < 40} {incr i}  {
+    
+        set len  [expr [Rand 20] + 3]
+        set ang  [Rand [expr $i*113]]
+    
+        set x  [Cos $x $len $ang]
+        set y  [Sin $y $len $ang]
+    
+        lineto $x $y
+    }
+}
+
+
+proc fw {len angle}  {
+    pLineBy $len $angle
+}
+
+
+proc square {lenw lenh angle {color blue}} {
+    # Assumes line is coming vertical bottom up
+    pLineBy $lenh [incr angle 0] $color
+    pLineBy $lenw [incr angle +90] $color
+    pLineBy $lenh [incr angle +90] $color
+    pLineBy $lenw [incr angle +90] $color
+    incr angle +90      ;# and ends up facing where it entered here
+    return $angle
+}
+
+
+proc ArchStreetLight {facing_side angle color}  {
+    PushPos
+    pLineBy 18 [expr $angle +90] $color   ;# pole, vertical line
+    set style  1
+    if [Rand 2]  { set style  -1 }
+    if {$facing_side == "facing-left"}  {
+        #@@TODO
+    }
+    pLineBy 4 [expr $angle +45*$style] $color
+    pLineBy 6 [expr $angle + 0] $color
+    # lamp holder
+    pLineBy 1 [expr $angle - 90*$style] $color
+    pLineBy 2 [expr $angle - 180*$style] $color
+    pLineBy 1 [expr $angle - (180+45)*$style] $color
+    PopPos
+}
+
+
+# Facing side not used, lamp is symmetric
+proc streetlight_2 {facing_side angle color}  {
+    PushPos
+    #pole, vertical line
+    pLineBy 16 [expr $angle -90] $color
+    pLineBy 4 [expr $angle -45] $color
+    pLineBy 5 [expr $angle + 0] $color
+    # lamp holder
+    # @@TODO
+    PopPos
+}
+
+
+proc Road {type angle {color blue}} {
+    # Assumes line is coming horizontal left to right.
+    # Draws an empty space (road) with some street lighting poles.
+    # Move to and draw a street light pole on the left
+    pLineBy 5 [incr angle 0] $color       ;# moving a little to the right, sidewalk length
+    # pole
+    ArchStreetLight "facing-right" $angle $color
+    # sidewalk...
+    pLineBy 3 [incr angle 0] $color       ;# sidewalk length
+    pLineBy 2 [incr angle -90] $color     ;# sidewalk height
+    # asfalt
+    pLineBy 20 [incr angle +90] $color
+    # sidewalk...
+    pLineBy 2 [incr angle +90] $color     ;# sidewalk height
+    pLineBy 8 [incr angle -90] $color     ;# sidewalk length
+
+    return $angle
+}
+
+
+proc Star {size angle {color blue}} {
+    # Assumes line is coming vertical bottom up and PenUp
+    PenDown
+    pLineBy $size [incr angle 0] $color       ;# vertical line, going up
+    PenUp
+    set dy1  [expr $size/2 + [Rand [expr $size/2] 1]]   ;# horizontal crosses vertical at a random point
+    pLineBy [expr $dy1] [incr angle -180] $color        ;# coming down then right
+    pLineBy [expr $size/2] [incr angle +90] $color
+    PenDown
+    pLineBy $size [incr angle +180] $color    ;# horizontal line
+    PenUp
+    # and ends up facing top down at the same (polar coord) vertical line
+    pLineBy [expr $size/2] [incr angle -180] $color     ;# returning to start center point
+    pLineBy [expr $size-$dy1] [incr angle +90] $color   ;# coming down to start
+    return $angle
+}
+
+
+proc GenStars {w h angle}  {
+    # Stars
+    for {set ii [Rand 2 0]} {$ii > 0} {incr ii -1}  {
+        PenUp
+        PushPos
+        # We're at the right end roof top. We go left a random amount...
+        set star_dxpos  [Rand $w]
+        pLineBy $star_dxpos [expr $angle + 180]
+        # ... then we go up a random amount...
+        set star_dypos  [Rand [expr 250 - $h] 20]
+        pLineBy $star_dypos [expr $angle + 90]
+        # then put a star.
+        Star [Rand 3 1] $angle
+        PopPos
+        PenDown
+    }
+}
+
+
+proc Building {type width height {angle 0} {special 0}}  {
+    # Assumes line is coming horizontal from left to right, at the bottom (street level)
+
+    PenDown
+
+    set BuildUnit  10
+    set w  [expr $width * $BuildUnit]
+    set h  [expr $height * $BuildUnit]
+
+    pLineBy $h [incr angle 90]
+    switch -- $type {
+        0 {
+            # Flat top
+            pLineBy $w [incr angle -90]
+            # After finishing the top part of the building, generate stars,
+            GenStars $w $h $angle
+            # and then prepare to draw the right vertical wall.
+            incr angle -90
+        }
+        1 {
+            # Triangle top
+            set roofAngle  55
+            set len  [expr round($w / (2.0 * sin($roofAngle*3.1415/180)))]
+            pLineBy $len [incr angle -$roofAngle]
+            if {$height > 10 && $width < 4}  {
+                pLineBy 16 [expr $angle + $roofAngle]
+                PenUp
+                pLineBy -16 [expr $angle + $roofAngle]
+                PenDown
+            }
+            pLineBy $len [incr angle -[expr 180-2*$roofAngle]]
+            # After finishing the top part of the building, generate stars,
+            GenStars $w $h [expr $angle - $roofAngle]
+            # and then prepare to draw the right vertical wall.
+            incr angle [expr -$roofAngle]
+        }
+        2 {
+            # Flat top with chimney
+            set chim_dx  [Rand [expr $w/8] 4]
+            # chimney horizontal position: in the left 1/2 part of the roof, with a minimum distance from the left edge
+            set chim_px  [Rand [expr $w/2 - $chim_dx] 5]
+            set chim_dy  [Rand 6 3]
+            pLineBy $chim_px [incr angle -90]
+            pLineBy $chim_dy [incr angle +90]
+            pLineBy $chim_dx [incr angle -90]      ;# chimney top
+            pLineBy $chim_dy [incr angle -90]
+            pLineBy [expr $w - 2*$chim_dx] [incr angle +90]
+            # After finishing the top part of the building, generate stars,
+            GenStars $w $h $angle
+            # and then prepare to draw the right vertical wall.
+            incr angle -90
+        }
+    }
+    # right vertical wall, we end up facing down after this
+    pLineBy $h $angle
+
+    # Draw windows...
+    PenUp
+    PushPos
+    if {1}  {      ;# night windows
+        # move to make windows 
+        pLineBy [expr $BuildUnit/2] [expr $angle -90]
+        set ang  [expr $angle + 180]
+        for {set ww 0} {$ww < $width-1} {incr ww}  {
+            PushPos
+            pLineBy 8 $ang       ;# position in height
+            for {set j 0} {$j < $height-1} {incr j}  {
+                if {[Rand 100] <= 30}  {
+                    PenDown
+                    set side  [expr $BuildUnit * 7 / 10]
+                    square $side $side $ang 
+                    PenUp
+                }
+                pLineBy $BuildUnit $ang
+            }
+            PopPos
+            pLineBy $BuildUnit [incr ang +90] green    ;# move sideways
+            incr ang -90     ;# face up and we're ready
+        }
+    }
+    PopPos
+    PenDown
+
+    # random height out-of-phase insertion
+    pLineBy [Rand 15 -7] [incr angle 0]
+
+    # Space to next building, end facing left to right
+    pLineBy [Rand 2 1] [incr angle 90]
+
+    return $angle
+}
+
+
+proc _Moon {phase}  {
+    # Y: -150..150
+    PushPos
+    SetPos [Rand 350 20] [Rand 100 220]
+    set sign  1
+    set base  0
+    #set phase 2
+    for {set angle 0} {$angle < 360} {incr angle [expr 360 / 16]}  {
+        set ang  [expr $angle - 20]
+        if {$phase == 1 && $angle == 360/16*11}  {
+            set sign  -1
+            set base  [expr -(180+45 -45)]
+        } elseif {$phase == 2 && $angle == 360/16*8}  {
+            pLineBy -22 [expr 78 -20]
+            break
+        }
+        pLineBy 4 [expr $sign * $ang + $base]
+    }
+    PopPos
+}
+
+
+proc circle {cx cy radius start_ang end_ang}  {
+    # Y: -150..150
+    PenUp
+    SetPos [expr $cx + [Cos 0 $radius $start_ang]] [expr $cy + [Sin 0 $radius $start_ang]]
+    PenDown
+    for {set angle $start_ang} {$angle <= $end_ang} {incr angle}  {
+        _lineto [expr $cx + [Cos 0 $radius $angle]] [expr $cy + [Sin 0 $radius $angle]]
+    }
+    PenUp
+}
+
+proc Moon {phase}  {
+    # Y: -150..150
+    PushPos
+    SetPos [Rand [expr $::gLimX - 90] 50] [Rand 100 220]
+    set radius  20
+
+    switch -- $phase {
+        0 {
+            circle $::X $::Y $radius -180 90
+            circle [expr $::X - $radius] [expr $::Y + 0] $radius -90 0
+        }
+        1 {
+            circle $::X $::Y $radius [expr -180+45] 90
+            circle [expr $::X - $radius] [expr $::Y - $radius*1/2] [expr $radius*5/4] -80 23
+        }
+        2 {
+            circle $::X $::Y $radius [expr -180+45] 80
+            circle [expr $::X - $radius*3/4] [expr $::Y - $radius*3/4] [expr $radius] -90 50
+        }
+    }
+
+    PopPos
+}
+
+
+
+proc L-system {sentence rule n angle len {start_angle ""}}  {
+
+    set on  $n
+    for {} {$n >= 0} {incr n -1}  {
+        set sentence  [string map $rule $sentence]
+    }
+
+    if {$start_angle == ""}  {
+        SetPos [expr $::gLimX/6] [expr $::gLimY/4]
+        set start_angle  0
+    }
+
+    if [info exists ::gMakeSentencesFile]  {
+        catch {
+            set fd  [open sentences.txt a]
+            puts $fd "name=\"$::gSystemName\" n=$on angle=$angle len=$len start_angle=$start_angle sentence=$sentence"
+            close $fd
+        }
+    }
+
+    set sincr  [Rand 2 1]
+    set nlines  0
+    set itr  $start_angle
+    set stack  {}
+    set len2 [expr $len / 2]
+    set len3 [expr $len / 3]
+    set len4 [expr $len / 4]
+    foreach symbol [split $sentence ""] {
+        switch -- $symbol {
+            A -
+            B -
+            G -
+            F { pLineBy $len $itr  ; incr nlines }
+            2 { pLineBy $len2 $itr ; incr nlines }
+            3 { pLineBy $len3 $itr ; incr nlines }
+            4 { pLineBy $len4 $itr ; incr nlines }
+            + { incr itr $angle }
+            - { incr itr -$angle }
+            ^ { incr itr $sincr }
+            * { incr itr -$sincr }
+            \[ {
+                lappend stack [list $::X $::Y $itr]
+            }
+            \] {
+                foreach {::X ::Y itr} [lindex $stack end] break
+                set stack [lrange $stack 0 end-1]
+            }
+
+            b {
+                set type  [Rand 100 1]
+                if {$type < 20}  {
+                    set type  1     ;# pointy buildings
+                } elseif {$type < 60}  {
+                    set type  2     ;# flat top buildings with chimney
+                } else {
+                    set type  0     ;# flat top buildings
+                }
+                # Pointy buildings are usually taller
+                set height  [Rand 10 3]
+                if {$type == 1 && $height < 5}  {
+                    incr height 5
+                }
+                set itr  [Building $type [Rand 3 2] $height $itr]
+            }
+            r { set itr  [Road [Rand 2] $itr] }
+            m { Moon [Rand 4] }
+            s { pLineBy [Rand 18 2] $itr blue }
+            t {
+                PenUp
+                pLineBy 2 $itr
+                PenDown
+
+                PushPos
+                # Add some displacement in height, looks cool :)
+                incr ::Y [Rand 10 -7]
+                # 2 tree types
+                if [Rand 2]  {
+                    set ang  30  ;# [Rand 10 25]
+                    L-system +++4AAF {F 2[C][D]2F  C +AF  D -AF} 2 $ang 5 $angle
+                } else {
+                    set ang  25  ;# [Rand 6 22]
+                    L-system ++++X {X F-[X]+F[+X]-X  F FF} 2 $ang 2 $angle
+                }
+
+                PenUp
+                GenStars 2 20 $angle
+
+                PopPos
+                pLineBy 2 $itr
+                PenDown
+            }
+        }
+    }
+
+    .c delete texti
+    .c create text 20 20 -anchor nw -font {{Courier New} 9} -text \
+        "System: $::gSystemName\nSentence ([string length $sentence]): [string range $sentence 0 128]\nLines: $nlines  Angle: $angle" -tags texti
+}
+
+
+proc main {} {
+    PenDown
+    switch -- $::gCurve {
+        0 {
+            set ::gSystemName  "Feltro Cityscape"
+            set angle  0
+            SetPos 50 50
+            L-system s^b^**r^^bsb*st*s*bbb*b^bsts^ttstm {} 2 $angle 1 0       ;# feltro city
+        }
+        1 {
+            # Kock curve
+            set ::gSystemName  "Kock Curve"
+            SetPos 20 20  ;#[expr $::gLimY*3/4]
+            #  sentence rule n angle len {start_angle ""}
+            L-system F {F F+F-F-F+F} 3 90 5 0
+        }
+        2 {
+            # Sierpinski triangle
+            set ::gSystemName  "Sierpinski Triangle"
+            SetPos 20 20
+            #  sentence rule n angle len {start_angle ""}
+            L-system A {A B-A-B  B A+B+A} 5 60 5 0
+        }
+        3 {
+            # Dragon curve
+            set ::gSystemName  "Dragon Curve"
+            SetPos [expr 3*$::gLimX/4] [expr $::gLimY/3]
+            #  sentence rule n angle len {start_angle ""}
+            L-system FX {X X+YF  Y FX-Y} 11 90 5 0
+        }
+        4 {
+            # Fractal plant
+            set ::gSystemName  "Fractal Plant"
+            SetPos [expr $::gLimX/2] 40
+            #  sentence rule n angle len {start_angle ""}
+            L-system ++++X {X F-[[X]+X]+F[+FX]-X  F FF} 4 25 4 0
+        }
+        5 {
+            # Hilbert curve
+            set ::gSystemName  "Hilbert Curve"
+            SetPos [expr $::gLimX/2] [expr $::gLimY/2]
+            set angle  [expr [Rand 8] - 4 + 90]
+            #  sentence rule n angle len {start_angle ""}
+            L-system A {A -BF+AFA+FB-  B +AF-BFB-FA+} 2 $angle 5 0
+        }
+        6 {
+            # Kock snowflake
+            set ::gSystemName  "Kock Snowflake"
+            SetPos 20 [expr $::gLimY/2]
+            set angle  60
+            #  sentence rule n angle len {start_angle ""}
+            L-system F {F  F-F++F-F} 2 $angle 12 0
+        }
+        7 {
+            # Teddy's head
+            set ::gSystemName  "Teddy's Head"
+            SetPos [expr $::gLimX/2] [expr $::gLimY/2]
+            set angle [expr [Rand 10] -5 + 60]
+            #  sentence rule n angle len {start_angle ""}
+            L-system +++F {F  ++F+F--F+F-} 1 $angle 12 0
+        }
+        8 {
+            # Uma espécie de espiga
+            set ::gSystemName  "Espiga"
+            SetPos [expr $::gLimX/2] [expr $::gLimY/2]
+            set angle [expr [Rand 10] -5 + 30]
+            #           sentence rule n angle len {start_angle ""}
+            L-system +++AAAF {F 2[C][D]2F  C +AF  D -AF} 3 $angle 12 0
+        }
+        9 {
+            # leafs
+            set ::gSystemName  Leafs
+            SetPos [expr $::gLimX/2] [expr $::gLimY/2]
+            set angle  45   ;#[expr [Rand 5] * 5 + 10]
+            #  sentence rule n angle len {start_angle ""}
+            L-system A {A -A-B  B +A} 5 $angle 5 0
+        }
+
+        disabled {
+            # snowflake.... doesn't quite work...
+            set ::gSystemName  "Snow Flake"
+            SetPos [expr $::gLimX/6] [expr $::gLimY/4]
+            set angle  60
+            #  sentence rule n angle len {start_angle ""}
+            L-system A+A+A+C++D--C++A {
+                        A B-A+A+C++B-D--A      B A+B-B-D--A+C++B
+                        C B-A+A+C++D--C++B---  D A+B-B-D--C++D--A+++} 2 $angle 6 0
+        }
+
+        default {
+            set ::gCurve 0
+            main
+        }
+    }
+}
+
+
+# Window size
+set ::gWinDx  580
+set ::gWinDy  460
+
+if ![info exists ::gCurve]  {
+    wm protocol . WM_DELETE_WINDOW { exit 0 }
+    canvas .c -width $gWinDx -height $gWinDy -background white
+    pack .c -in . -fill both -expand yes
+    set ::gFirstRun  1
+} else {
+    .c delete all
+    catch { unset ::gFirstRun }
+}
+
+
+if {$argv != ""}  {
+    if {[lindex $argv 0] == "-d"}  {
+        set ::gMakeSentencesFile  1
+        set argv  [lrange $argv 1 end]
+        lappend $argv 0
+    }
+    set ::gCurve  [lindex $argv 0]
+} else {
+    tk_messageBox -title "Information" -parent . -message "Left mouse click: next system\nRight mouse click: previous system"
+    set ::gCurve  0
+}
+
+# Usefull area and axis
+set ::origin  10
+set ::gLimX  560
+set ::gLimY  360
+
+
+proc drawAxis {origin limX limY}  {
+    set step  20
+    set color  darkgrey
+    set halfTickWidth  2
+    .c create line [expr $origin-$halfTickWidth] [Yc $origin] $limX [Yc $origin] -fill $color           ;# X
+    .c create line [expr $origin] [Yc $origin-$halfTickWidth] [expr $origin] [Yc $limY] -fill $color    ;# Y
+    # Vertical ticks on the X axis
+    for {set x [expr $origin + $step]} {$x <= $limX} {incr x $step}  {
+        .c create line $x [Yc $origin-$halfTickWidth] $x [Yc $origin+$halfTickWidth] -fill $color
+    }
+    # Horizontal ticks on the Y axis
+    for {set y [expr $origin + $step]} {$y <= $limY} {incr y $step}  {
+        .c create line [expr $origin-$halfTickWidth] [Yc $y] [expr $origin+$halfTickWidth] [Yc $y] -fill $color
+    }
+}
+
+
+drawAxis $::origin $::gLimX $::gLimY
+
+if [info exists ::gFirstRun]  {
+    #walk
+    main
+    update
+
+    bind .c <Button-1>  { .c delete all; drawAxis $::origin $::gLimX $::gLimY ; incr ::gCurve ; main }
+    bind . <KeyRelease> { if {"%K" == "r"} { source [info script] } }
+    bind .c <Button-3>  { .c delete all; drawAxis $::origin $::gLimX $::gLimY ; incr ::gCurve -1 ; main }
+
+    focus .
+    wm state . normal
+    raise .
+    focus .c
+
+    tkwait window .
+
+} else {
+    main
+    update
+}
+
